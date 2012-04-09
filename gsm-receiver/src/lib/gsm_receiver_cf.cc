@@ -34,8 +34,10 @@
 #include <gsm_receiver_cf.h>
 #include <viterbi_detector.h>
 #include <string.h>
+#include <sstream>
 #include <decoder/sch.h>
 #include <decoder/a5-1-2.h>//!!
+#include <boost/thread/thread.hpp> 
 
 
 #include "RxBurst.h"
@@ -44,6 +46,98 @@
 #define SYNC_SEARCH_RANGE 30
 // #define TRAIN_SEARCH_RANGE 40
 //FIXME: decide to use this define or not
+
+unsigned char RNTABLE[114] = {
+    48, 98, 63, 1, 36, 95, 78, 102, 94, 73, \
+    0, 64, 25, 81, 76, 59, 124, 23, 104, 100, \
+    101, 47, 118, 85, 18, 56, 96, 86, 54, 2, \
+    80, 34, 127, 13, 6, 89, 57, 103, 12, 74, \
+    55, 111, 75, 38, 109, 71, 112, 29, 11, 88, \
+    87, 19, 3, 68, 110, 26, 33, 31, 8, 45, \
+    82, 58, 40, 107, 32, 5, 106, 92, 62, 67, \
+    77, 108, 122, 37, 60, 66, 121, 42, 51, 126, \
+    117, 114, 4, 90, 43, 52, 53, 113, 120, 72, \
+    16, 49, 7, 79, 119, 61, 22, 84, 9, 97, \
+    91, 15, 21, 24, 46, 39, 93, 105, 65, 70, \
+    125, 99, 17, 123 \
+};
+
+/*
+ * Slow Frequency Hopping (SFH)
+ * Return MAI - Mobile Allocation Index into MA
+ */
+int gsm_receiver_cf::calculate_ma_sfh(int maio, int hsn, int n, int t1, int t2, int t3, int fn)
+{
+    int mai = 0;
+    int s = 0;
+    int nbin = floor(log2(n) + 1);
+
+    if (hsn == 0)
+        mai = (fn + maio) % n;
+    else {
+        int t1r = t1 % 64;
+        int m = t2 + RNTABLE[(hsn ^ t1r) + t3];
+        int mprim = m % (1 << nbin);
+        int tprim = t3 % (1 << nbin);
+
+        if (mprim < n)
+            s = mprim;
+        else
+            s = (mprim + tprim) % n;
+
+        mai = (s + maio) % n;
+    }
+
+    //DCOUT("MAI: " << mai);
+
+    return (mai);
+}
+
+/*
+ * Slow Frequency Hopping (SFH)
+ * Calculate the index into the CA - Cell allocation
+ * Maybe this should be a static table for the sake of speed
+ */
+int gsm_receiver_cf::calculate_ca_sfh(std::vector<unsigned char> ma, int maio, int hsn, int t1, int t2, int t3, int fn)
+{
+  unsigned char data;
+  int cai_offset = 0;
+  int mai_offset = 0;
+  int found = 0;
+
+  int mai = calculate_ma_sfh(maio, hsn, d_narfcn, t1, t2, t3, fn);
+  std::vector<unsigned char>::iterator it;
+
+  for(it = ma.begin(); it < ma.end(); it++)
+  {
+      data = (unsigned char)(*it);
+
+      for (int i = 0; i < 8; i++)
+      {
+        if (data & 0x01)
+        {
+          if (mai_offset == mai)
+          {
+            found = 1;
+            break;
+          }
+          mai_offset++;
+        }
+
+        cai_offset++;
+
+        data >>= 1;
+      }
+
+      if (found)
+        break;
+  }
+
+  //DCOUT("CAI: " << cai_offset)
+
+  return (cai_offset);
+}
+
 
 //TODO: this shouldn't be here - remove it when gsm receiver's interface will be ready
 void decrypt(const unsigned char * burst_binary, byte * KC, unsigned char * decrypted_data, unsigned FN)
@@ -115,6 +209,45 @@ void dump_bits(const unsigned char * burst_binary, unsigned char * decrypted_dat
   for (int i = 0; i < 57; i++)
     printf("%d", burst_binary[i+88] ^ decrypted_data[i+88]);
   printf("\n");
+}
+
+void gsm_receiver_cf::read_ma(std::string ma)
+{
+  //COUT("MA: " << ma);
+
+  std::stringstream ss;
+  std::string::reverse_iterator rit;
+  unsigned int data;
+
+  d_narfcn = 0;
+
+  rit = ma.rbegin();
+  while(rit < ma.rend())
+  {
+    ss << std::hex << *(rit + 1);
+    ss << std::hex << *rit;
+    ss << std::endl;
+    rit += 2;
+
+    ss >> data;
+
+    d_ma.push_back((unsigned char)data);
+
+    for (int i = 0; i < 8; i++)
+    {
+      if (data & 0x01) d_narfcn++;
+      data >>= 1;
+    }
+  }
+
+#if 0
+  std::vector<unsigned char>::iterator it;
+
+  for (it = d_ma.begin(); it < d_ma.end(); it++)
+    printf("data: %x\n", *it);
+#endif
+
+  DCOUT("NARFCN: " << d_narfcn);
 }
 
 void gsm_receiver_cf::read_key(std::string key)
@@ -199,23 +332,23 @@ void gsm_receiver_cf::process_normal_burst(burst_counter burst_nr, const unsigne
         first_burst = (burst_nr.get_frame_nr() % 104) == (12 + 26 * (ts / 2));
       else
         first_burst = (burst_nr.get_frame_nr() % 104) == (25 + 26 * ((ts - 1) / 2));
-#if 0 /* dump cipher, plain and keystream bits */
+#if 1 /* dump cipher, plain and keystream bits */
       dump_bits(burst_binary, decrypted_data, burst_nr, first_burst);
 #endif
       GS_process(&d_gs_ctx, TIMESLOT0 + ts, NORMAL, &decrypted_data[3], burst_nr.get_frame_nr(), first_burst);
     } else {
       int i;
       for (i = 0; i< 148; i++)
-	decrypted_data_float[i] = decrypted_data[i];
+        decrypted_data_float[i] = decrypted_data[i];
 
-      GSM::Time time(burst_nr.get_frame_nr(), ts);
-      GSM::RxBurst rxbrst(decrypted_data_float, time);
+       GSM::Time time(burst_nr.get_frame_nr(), ts);
+       GSM::RxBurst rxbrst(decrypted_data_float, time);
       if (ts - TIMESLOT1 >= 0 && ts - TIMESLOT1 < N_TCH_DECODER) {
-	if ( d_tch_decoder[ts - TIMESLOT1]->processBurst( rxbrst ) == true)
-	  fwrite(d_tch_decoder[ts - TIMESLOT1]->get_voice_frame(), 1 , d_tch_decoder[ts - TIMESLOT1]->get_voice_frame_length(), d_speech_file);
-	else if(rxbrst.Hl() || rxbrst.Hu()) {
-	  /* Stolen bits are set, might be FACCH */
-	  GS_process(&d_gs_ctx, TIMESLOT0 + ts, NORMAL, &decrypted_data[3], burst_nr.get_frame_nr(), first_burst);
+	      if ( d_tch_decoder[ts - TIMESLOT1]->processBurst( rxbrst ) == true)
+	        fwrite(d_tch_decoder[ts - TIMESLOT1]->get_voice_frame(), 1 , d_tch_decoder[ts - TIMESLOT1]->get_voice_frame_length(), d_speech_file);
+	      else if(rxbrst.Hl() || rxbrst.Hu()) {
+	        /* Stolen bits are set, might be FACCH */
+	        GS_process(&d_gs_ctx, TIMESLOT0 + ts, NORMAL, &decrypted_data[3], burst_nr.get_frame_nr(), first_burst);
         }
       }
     }
@@ -262,7 +395,7 @@ void gsm_receiver_cf::configure_receiver()
 
   /* configure TS1...TS7 */
 
-  for (ts = TIMESLOT1; ts < TIMESLOT7; ts++) {
+  for (ts = TIMESLOT1; ts <= TIMESLOT7; ts++) {
     if (d_gs_ctx.ts_ctx[ts].type == TST_TCHF) {
       d_channel_conf.set_multiframe_type(ts, multiframe_26);
       d_channel_conf.set_burst_types(ts, TRAFFIC_CHANNEL_F, sizeof(TRAFFIC_CHANNEL_F) / sizeof(unsigned), dummy_or_normal);
@@ -289,20 +422,20 @@ typedef std::vector<float> vector_float;
 typedef boost::circular_buffer<float> circular_buffer_float;
 
 gsm_receiver_cf_sptr
-gsm_make_receiver_cf(gr_feval_dd *tuner, gr_feval_dd *synchronizer, int osr, std::string key, std::string configuration)
+gsm_make_receiver_cf(gr_feval_dd *tuner, gr_feval_dd *synchronizer, int osr, int c0pos, std::string ma, int maio, int hsn, std::string key, std::string configuration)
 {
-  return gsm_receiver_cf_sptr(new gsm_receiver_cf(tuner, synchronizer, osr, key, configuration));
+  return gsm_receiver_cf_sptr(new gsm_receiver_cf(tuner, synchronizer, osr, c0pos, ma, maio, hsn, key, configuration));
 }
 
 static const int MIN_IN = 1; // mininum number of input streams
-static const int MAX_IN = 1; // maximum number of input streams
-static const int MIN_OUT = 0; // minimum number of output streams
+static const int MAX_IN = 125; // maximum number of input streams
+static const int MIN_OUT = 1; // minimum number of output streams
 static const int MAX_OUT = 1; // maximum number of output streams
 
 /*
  * The private constructor
  */
-gsm_receiver_cf::gsm_receiver_cf(gr_feval_dd *tuner, gr_feval_dd *synchronizer, int osr, std::string key, std::string configuration)
+gsm_receiver_cf::gsm_receiver_cf(gr_feval_dd *tuner, gr_feval_dd *synchronizer, int osr, int c0pos, std::string ma, int maio, int hsn, std::string key, std::string configuration)
     : gr_block("gsm_receiver",
                gr_make_io_signature(MIN_IN, MAX_IN, sizeof(gr_complex)),
                gr_make_io_signature(MIN_OUT, MAX_OUT, 142 * sizeof(float))),
@@ -315,8 +448,16 @@ gsm_receiver_cf::gsm_receiver_cf(gr_feval_dd *tuner, gr_feval_dd *synchronizer, 
     d_state(first_fcch_search),
     d_burst_nr(osr),
     d_failed_sch(0),
-    d_trace_sch(true)
+    d_trace_sch(true),
+    d_c0pos(c0pos),
+    d_maio(maio),
+    d_hsn(hsn)
 {
+  read_ma(ma);  // calculate ARFCN
+
+  if (d_c0pos >= d_narfcn)
+    DCOUT("ERROR: Wrong main channel position in MA: " << d_c0pos << ", " << d_narfcn);
+
   const unsigned char amr_nb_magic[6] = { 0x23, 0x21, 0x41, 0x4d, 0x52, 0x0a };
   int i;
   gmsk_mapper(SYNC_BITS, N_SYNC_BITS, d_sch_training_seq, gr_complex(0.0, -1.0));
@@ -392,8 +533,11 @@ gsm_receiver_cf::~gsm_receiver_cf()
 
 void gsm_receiver_cf::forecast(int noutput_items, gr_vector_int &nitems_items_required)
 {
-  nitems_items_required[0] = noutput_items * floor((TS_BITS + 2 * GUARD_PERIOD) * d_OSR);
+  for(int i = 0; i < nitems_items_required.size(); i++)
+    nitems_items_required[i] = noutput_items * floor((TS_BITS + 2 * GUARD_PERIOD) * d_OSR);
 }
+
+//static int st = 0;
 
 int
 gsm_receiver_cf::general_work(int noutput_items,
@@ -401,10 +545,69 @@ gsm_receiver_cf::general_work(int noutput_items,
                               gr_vector_const_void_star &input_items,
                               gr_vector_void_star &output_items)
 {
-  const gr_complex *input = (const gr_complex *) input_items[0];
+  if (input_items.size() < d_narfcn)
+  {
+    DCOUT("ERROR: number of channels is less than what MA requires: " << input_items.size() << ", " << d_narfcn);
+    return (-1);
+  }
+  const gr_complex *input = (const gr_complex *) input_items[d_c0pos];
+  const gr_complex *tmp = NULL;
   //float *out = (float *) output_items[0];
   int produced_out = 0;  //how many output elements were produced - this isn't used yet
   //probably the gsm receiver will be changed into sink so this variable won't be necessary
+  
+  /*
+  st++;
+  //boost::this_thread::sleep(boost::posix_time::microseconds(1));
+ 
+  for(int j = 0; j < 6; j++)
+  {
+    //printf("input[%x]:", j);
+    for(int i = 0; i < noutput_items; i++)
+    {
+      if (j == 0)
+      {
+        if (*((char *)input_items[j]+i) != 0x18)
+          printf("error 18, %i\n", st);
+      }
+      else if (j == 1)
+      {
+        if(*((char *)input_items[j]+i) != 0x21)
+          printf("error 21, %i\n", st);
+      }
+      else if (j == 2)
+      {
+        if(*((char *)input_items[j]+i) != 0x30)
+          printf("error 30, %i\n", st);
+      }
+      else if (j == 3)
+      {
+        if(*((char *)input_items[j]+i) != 0x32)
+                    printf("error 32, %i\n", st);
+      }
+      else if (j == 4)
+      {
+        if(*((char *)input_items[j]+i) != 0x42)
+                    printf("error 42, %i\n", st);
+      }
+      else if (j == 5)
+      {
+        if(*((char *)input_items[j]+i) != 0x61)
+                    printf("error 61, %i\n", st);
+      }
+
+      //printf("%x", *((char *)input_items[j]+i));
+    }
+
+    //printf("\n");
+
+    consume_each(noutput_items);
+  }
+  return(200);
+  */
+
+
+  boost::this_thread::sleep(boost::posix_time::microseconds(500));
 
   switch (d_state) {
       //bootstrapping
@@ -425,7 +628,7 @@ gsm_receiver_cf::general_work(int noutput_items,
           if (abs(prev_freq_offset - d_freq_offset) > FCCH_MAX_FREQ_OFFSET) {
             set_frequency(d_freq_offset);              //call set_frequncy only frequency offset change is greater than some value
           }
-          //produced_out = 0;
+          //produced out = 0
           d_state = sch_search;
         } else {
           //produced_out = 0;
@@ -447,14 +650,14 @@ gsm_receiver_cf::general_work(int noutput_items,
             if(d_trace_sch)
             {
               DCOUT("sch burst_start: " << burst_start);
-              DCOUT("bcc: " << d_bcc << " ncc: " << d_ncc << " t1: " << t1 << " t2: " << t2 << " t3: " << t3);
+              DCOUT("bcc: " << d_bcc << " ncc: " << d_ncc << " t1: " << t1 << " t2: " << t2 << " t3: " << t3 << " FN: " << d_burst_nr.get_frame_nr());
             }
+
             d_burst_nr.set(t1, t2, t3, 0);                                  //set counter of bursts value
 
             #if 0 /* Dieter: now done in constructor */
             //configure the receiver - tell him where to find which burst type
             d_channel_conf.set_multiframe_type(TIMESLOT0, multiframe_51);  //in the timeslot nr.0 bursts changes according to t3 counter
-            configure_receiver();//TODO: this shouldn't be here - remove it when gsm receiver's interface will be ready
             // Dieter: don't call it, otherwise overwrites configuration of configure_receiver()
             d_channel_conf.set_burst_types(TIMESLOT0, FCCH_FRAMES, sizeof(FCCH_FRAMES) / sizeof(unsigned), fcch_burst);  //tell where to find fcch bursts
             d_channel_conf.set_burst_types(TIMESLOT0, SCH_FRAMES, sizeof(SCH_FRAMES) / sizeof(unsigned), sch_burst);     //sch bursts
@@ -503,6 +706,7 @@ gsm_receiver_cf::general_work(int noutput_items,
                   DCOUT("Adjusting frequency, new frequency offset: " << d_freq_offset << "\n");
                 }
               }
+              //DCOUT("fcch burst, TS: " << d_burst_nr.get_timeslot_nr());
             }
             break;
           case sch_burst: {                                                                    //if it's SCH burst
@@ -515,43 +719,71 @@ gsm_receiver_cf::general_work(int noutput_items,
                 offset =  burst_start - floor((GUARD_PERIOD) * d_OSR);                         //compute offset from burst_start - burst should start after a guard period
                 if(d_trace_sch)
                 {
-                  DCOUT("bcc: " << d_bcc << " ncc: " << d_ncc << " t1: " << t1 << " t2: " << t2 << " t3: " << t3);
+                  DCOUT("bcc: " << d_bcc << " ncc: " << d_ncc << " t1: " << t1 << " t2: " << t2 << " t3: " << t3 << 
+                      " FN: " << d_burst_nr.get_frame_nr());
                   DCOUT(offset);
                 }
+                DCOUT("sch burst, TS: " << d_burst_nr.get_timeslot_nr());
                 to_consume += offset;                                                          //adjust with offset number of samples to be consumed
               } else {
                 d_failed_sch++;
                 if (d_failed_sch >= MAX_SCH_ERRORS) {
-//                   d_state = next_fcch_search;        //TODO: this isn't good, the receiver is going wild when it goes back to next_fcch_search from here
-//                   d_freq_offset_vals.clear();
-                  DCOUT("many sch decoding errors");
+//                  d_state = next_fcch_search;        //TODO: this isn't good, the receiver is going wild when it goes back to next_fcch_search from here
+//                  d_freq_offset_vals.clear();
+                    //DCOUT("many sch decoding errors");
                 }
               }
             }
             break;
 
           case normal_burst:                                                                  //if it's normal burst
+            //DCOUT("normal burst, TS: " << d_burst_nr.get_timeslot_nr() << " FN: " << d_burst_nr.get_frame_nr());
+            tmp = input;
+            if (d_burst_nr.get_timeslot_nr() != 0)
+            {
+                // ma, maio, hsn, t1, t2, t3, fn
+                int cai = calculate_ca_sfh(d_ma, d_maio, d_hsn, d_burst_nr.get_t1(), d_burst_nr.get_t2(), d_burst_nr.get_t3(), d_burst_nr.get_frame_nr());
+
+                DCOUT("SFH normal: " << cai);
+                input = (const gr_complex *) input_items[cai];
+
+            }
             burst_start = get_norm_chan_imp_resp(input, &channel_imp_resp[0], d_bcc); //get channel impulse response for given training sequence number - d_bcc
             detect_burst(input, &channel_imp_resp[0], burst_start, output_binary);            //MLSE detection of bits
             process_normal_burst(d_burst_nr, output_binary, first_burst); //TODO: this shouldn't be here - remove it when gsm receiver's interface will be ready
+            input = tmp;
             break;
 
           case dummy_or_normal: {
-              burst_start = get_norm_chan_imp_resp(input, &channel_imp_resp[0], TS_DUMMY);
+            //DCOUT("dummy_or_normal burst, TS: " << d_burst_nr.get_timeslot_nr());
+            tmp = input;
+            if (d_burst_nr.get_timeslot_nr() != 0)
+            {
+                // ma, maio, hsn, t1, t2, t3, fn
+                int cai = calculate_ca_sfh(d_ma, d_maio, d_hsn, d_burst_nr.get_t1(), d_burst_nr.get_t2(), d_burst_nr.get_t3(), d_burst_nr.get_frame_nr());
+
+                input = (const gr_complex *) input_items[cai];
+
+                DCOUT("SFH dummy or normal: " << cai);
+            }
+            burst_start = get_norm_chan_imp_resp(input, &channel_imp_resp[0], TS_DUMMY);
+            detect_burst(input, &channel_imp_resp[0], burst_start, output_binary);
+
+            std::vector<unsigned char> v(20);
+            std::vector<unsigned char>::iterator it;
+            it = std::set_difference(output_binary + TRAIN_POS, output_binary + TRAIN_POS + 16, &train_seq[TS_DUMMY][5], &train_seq[TS_DUMMY][21], v.begin());
+            int different_bits = (it - v.begin());
+
+            if (different_bits > 2) {
+              burst_start = get_norm_chan_imp_resp(input, &channel_imp_resp[0], d_bcc);
               detect_burst(input, &channel_imp_resp[0], burst_start, output_binary);
-
-              std::vector<unsigned char> v(20);
-              std::vector<unsigned char>::iterator it;
-              it = std::set_difference(output_binary + TRAIN_POS, output_binary + TRAIN_POS + 16, &train_seq[TS_DUMMY][5], &train_seq[TS_DUMMY][21], v.begin());
-              int different_bits = (it - v.begin());
-
-              if (different_bits > 2) {
-                burst_start = get_norm_chan_imp_resp(input, &channel_imp_resp[0], d_bcc);
-                detect_burst(input, &channel_imp_resp[0], burst_start, output_binary);
-                if (!output_binary[0] && !output_binary[1] && !output_binary[2]) {
-                  process_normal_burst(d_burst_nr, output_binary, first_burst); //TODO: this shouldn't be here - remove it when gsm receiver's interface will be ready
-                }
+              printf("Tail bits: %x%x%x\n", output_binary[0], output_binary[1], output_binary[2]);
+              if (1 /*!output_binary[0] && !output_binary[1] && !output_binary[2]*/) {
+                process_normal_burst(d_burst_nr, output_binary, first_burst); //TODO: this shouldn't be here - remove it when gsm receiver's interface will be ready
+                //DCOUT("dummy_or_normal: normal burst, TS: " << d_burst_nr.get_timeslot_nr() << " FN: " << d_burst_nr.get_frame_nr());
               }
+            }
+            input = tmp;
             }
           case rach_burst:
             //implementation of this channel isn't possible in current gsm_receiver
@@ -563,8 +795,10 @@ gsm_receiver_cf::general_work(int noutput_items,
           case dummy:                                                         //if it's dummy
             burst_start = get_norm_chan_imp_resp(input, &channel_imp_resp[0], TS_DUMMY); //read dummy
             detect_burst(input, &channel_imp_resp[0], burst_start, output_binary);   // but as far as I know it's pointless
+            //DCOUT("dummy burst, TS: " << d_burst_nr.get_timeslot_nr());
             break;
           case empty:   //if it's empty burst
+            //DCOUT("empty burst, TS: " << d_burst_nr.get_timeslot_nr());
             break;      //do nothing
         }
 

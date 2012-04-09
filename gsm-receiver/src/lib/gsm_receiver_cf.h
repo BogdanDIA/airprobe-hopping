@@ -42,7 +42,7 @@ class gsm_receiver_cf;
 typedef boost::shared_ptr<gsm_receiver_cf> gsm_receiver_cf_sptr;
 typedef std::vector<gr_complex> vector_complex;
 
-gsm_receiver_cf_sptr gsm_make_receiver_cf(gr_feval_dd *tuner, gr_feval_dd *synchronizer, int osr, std::string key, std::string configuration);
+gsm_receiver_cf_sptr gsm_make_receiver_cf(gr_feval_dd *tuner, gr_feval_dd *synchronizer, int osr, int c0pos, std::string maval, int maio, int hsn, std::string key, std::string configuration);
 
 /** GSM Receiver GNU Radio block
  *
@@ -57,6 +57,7 @@ class gsm_receiver_cf : public gr_block
   private:
     std::map<char,int> d_hex_to_int;
     FILE * d_speech_file; //!!
+    std::vector<unsigned char> d_ma;
     uint8_t d_KC[8]; //!!
     GSM::TCHFACCHL1Decoder *d_tch_decoder[N_TCH_DECODER]; //!!
     bool d_trace_sch;
@@ -71,6 +72,10 @@ class gsm_receiver_cf : public gr_block
     //@{
     const int d_OSR; ///< oversampling ratio
     const int d_chan_imp_length; ///< channel impulse length
+    int d_narfcn; ///< number of ARFCNs in the mobile allocation
+    const int d_c0pos; ///< Main channel position in CA
+    const int d_maio; ///< mobile allocation index offset
+    const int d_hsn; ///< hopping sequence number
     //@}
 
     gr_complex d_sch_training_seq[N_SYNC_BITS]; ///<encoded training sequence of a SCH burst
@@ -120,8 +125,8 @@ class gsm_receiver_cf : public gr_block
     // GSM Stack
     GS_CTX d_gs_ctx;//TODO: remove it! it'a not right place for a decoder
 
-    friend gsm_receiver_cf_sptr gsm_make_receiver_cf(gr_feval_dd *tuner, gr_feval_dd *synchronizer, int osr, std::string key, std::string configuration);
-    gsm_receiver_cf(gr_feval_dd *tuner, gr_feval_dd *synchronizer, int osr, std::string key, std::string configuration);
+    friend gsm_receiver_cf_sptr gsm_make_receiver_cf(gr_feval_dd *tuner, gr_feval_dd *synchronizer, int osr, int c0pos, std::string ma, int maio, int hsn, std::string key, std::string configuration);
+    gsm_receiver_cf(gr_feval_dd *tuner, gr_feval_dd *synchronizer, int osr, int c0pos, std::string ma, int maio, int hasn, std::string key, std::string configuration);
 
     /** Function whis is used to search a FCCH burst and to compute frequency offset before
      * "synchronized" state of the receiver
@@ -227,7 +232,21 @@ class gsm_receiver_cf : public gr_block
      */
     int get_norm_chan_imp_resp(const gr_complex * input, gr_complex * chan_imp_resp, int bcc);
 
-    
+    /**
+     *
+     */
+    void read_ma(std::string ma);
+
+    /**
+     *
+     */
+    int calculate_ma_sfh(int maio, int hsn, int n, int t1, int t2, int t3, int fn);
+
+    /**
+     *
+     */
+    int calculate_ca_sfh(std::vector<unsigned char> ma, int maio, int hsn, int t1, int t2, int t3, int fn);
+
     /**
      *
      */
