@@ -120,7 +120,7 @@ class gsm_receiver_first_blood(gr.top_block):
         parser.add_option("--hsn", type="int", default=6,
                             help="Hopping Sequence Number")
 
-        parser.add_option("-O", "--outputfile", type="string", default="cfile2.out",
+        parser.add_option("-O", "--outputfile", type="string", default="cfile_channelize.out",
                           help="Output filename")
         parser.add_option("-k", "--key", type="string", default="AD 6A 3E C2 B4 42 E4 00",
                           help="KC session key")
