@@ -3,15 +3,13 @@
 #
 # Add only the CA (Cell Allocation) according to SI type 1
 #
-CONFIGURATION="7T"
-#CA="18 21 30 32 42 61"
-CA="12 22 33 42 49 54"
-C0="33"
-MA="07"
-MAIO=2
-HSN=2
+CONFIGURATION="5S"
+CA="18 21 30 32 42 61"
+C0="18"
+MA="2f"
+MAIO=1
+HSN=6
 KEY="00 00 00 00 00 00 00 00"
-KEY="88 0b 84 cd 8f 24 74 00"
 NSAMPLES=256000000
 
 #############################################################
@@ -70,10 +68,14 @@ echo "Number of samples: $NSAMPLES"
 echo "CA files: $CA_FILES"
 echo "C0 ARFCN: $C0"
 echo "C0 position: $c0POS"
+echo "SR: $SR"
+echo "NCHANNELS: $NCHANNELS"
+echo "pfbDECIM: $pfbDECIM"
+echo "totDECIM: $totDECIM"
 
 if [ $CONFIGURATION == "0B" ]
 then
-  #sudo uhd_rx_cfile.py -g 76 -f "$FC" --samp-rate="$SR" out/out.cf -N "$NSAMPLES"
+  sudo uhd_rx_cfile -g 76 -f "$FC" --samp-rate="$SR" out/out.cf -N "$NSAMPLES"
   ./channelize2.py --inputfile="out/out.cf" --arfcn="$ARFCN_fc" --srate="$SR" --decimation="$pfbDECIM" --nchannels="$NCHANNELS" --nsamples=$NSAMPLES
   ./gsm_receive100_channelize.py -d "$totDECIM" -c "$CONFIGURATION" -k "$KEY" --c0pos $c0POS --ma "$MA" --maio $MAIO --hsn $HSN --inputfiles "$CA_FILES"
 else
