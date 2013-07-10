@@ -4,5 +4,6 @@ Based on: https://svn.berlin.ccc.de/projects/airprobe/
 
 ###HowTo:
 
-**ToDo: add info**
+**Info:**  
+http://yo3iiu.ro/blog/?p=1069  
 
