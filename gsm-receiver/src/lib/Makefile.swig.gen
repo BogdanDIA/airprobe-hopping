@@ -255,4 +255,4 @@ $(DEPDIR)/gsm-generate-stamp:
 # not guaranteed to be portable, but will probably work.  If it works,
 # we have accurate dependencies for our swig stuff, which is good.
 
-@am__include@ @am__quote@./$(DEPDIR)/gsm.d@am__quote@
+#@am__include@ @am__quote@./$(DEPDIR)/gsm.d@am__quote@

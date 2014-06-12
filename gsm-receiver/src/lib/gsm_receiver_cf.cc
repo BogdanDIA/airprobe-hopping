@@ -24,8 +24,8 @@
 #include "config.h"
 #endif
 
-#include <gr_io_signature.h>
-#include <gr_math.h>
+#include <gnuradio/io_signature.h>
+#include <gnuradio/math.h>
 #include <math.h>
 #include <Assert.h>
 #include <boost/circular_buffer.hpp>
@@ -422,7 +422,7 @@ typedef std::vector<float> vector_float;
 typedef boost::circular_buffer<float> circular_buffer_float;
 
 gsm_receiver_cf_sptr
-gsm_make_receiver_cf(gr_feval_dd *tuner, gr_feval_dd *synchronizer, int osr, int c0pos, std::string ma, int maio, int hsn, std::string key, std::string configuration)
+gsm_make_receiver_cf(gr::feval_dd *tuner, gr::feval_dd *synchronizer, int osr, int c0pos, std::string ma, int maio, int hsn, std::string key, std::string configuration)
 {
   return gsm_receiver_cf_sptr(new gsm_receiver_cf(tuner, synchronizer, osr, c0pos, ma, maio, hsn, key, configuration));
 }
@@ -435,10 +435,10 @@ static const int MAX_OUT = 1; // maximum number of output streams
 /*
  * The private constructor
  */
-gsm_receiver_cf::gsm_receiver_cf(gr_feval_dd *tuner, gr_feval_dd *synchronizer, int osr, int c0pos, std::string ma, int maio, int hsn, std::string key, std::string configuration)
-    : gr_block("gsm_receiver",
-               gr_make_io_signature(MIN_IN, MAX_IN, sizeof(gr_complex)),
-               gr_make_io_signature(MIN_OUT, MAX_OUT, 142 * sizeof(float))),
+gsm_receiver_cf::gsm_receiver_cf(gr::feval_dd *tuner, gr::feval_dd *synchronizer, int osr, int c0pos, std::string ma, int maio, int hsn, std::string key, std::string configuration)
+    : gr::block("gsm_receiver",
+               gr::io_signature::make(MIN_IN, MAX_IN, sizeof(gr_complex)),
+               gr::io_signature::make(MIN_OUT, MAX_OUT, 142 * sizeof(float))),
     d_OSR(osr),
     d_chan_imp_length(CHAN_IMP_RESP_LENGTH),
     d_tuner(tuner),
@@ -985,7 +985,7 @@ void gsm_receiver_cf::set_frequency(double freq_offset)
 inline float gsm_receiver_cf::compute_phase_diff(gr_complex val1, gr_complex val2)
 {
   gr_complex conjprod = val1 * conj(val2);
-  return gr_fast_atan2f(imag(conjprod), real(conjprod));
+  return gr::fast_atan2f(imag(conjprod), real(conjprod));
 }
 
 bool gsm_receiver_cf::reach_sch_burst(const int nitems)

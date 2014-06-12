@@ -20,21 +20,21 @@
 # Boston, MA 02110-1301, USA.
 
 dnl
-AC_DEFUN([GR_LIBGNURADIO_CORE_EXTRA_LDFLAGS], [
+AC_DEFUN([GR_LIBGNURADIO_RUNTIME_EXTRA_LDFLAGS], [
 AC_REQUIRE([AC_PROG_LD])
 # on Mingw32 extra LDFLAGS are required to ease global variable linking
-LIBGNURADIO_CORE_EXTRA_LDFLAGS=""
+LIBGNURADIO_RUNTIME_EXTRA_LDFLAGS=""
 
 AC_MSG_CHECKING([whether $LD accepts --enable-runtime-pseudo-reloc])
 if ${LD} --enable-runtime-pseudo-reloc --version >/dev/null 2>&1
 then
         # libtool requires the quotes
-        LIBGNURADIO_CORE_EXTRA_LDFLAGS="\"-Wl,--enable-runtime-pseudo-reloc\""
+        LIBGNURADIO_RUNTIME_EXTRA_LDFLAGS="\"-Wl,--enable-runtime-pseudo-reloc\""
         AC_MSG_RESULT(yes)
 else
         AC_MSG_RESULT(no)
 fi
 
-AC_SUBST(LIBGNURADIO_CORE_EXTRA_LDFLAGS)
+AC_SUBST(LIBGNURADIO_RUNTIME_EXTRA_LDFLAGS)
 
 ])
