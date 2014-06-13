@@ -4,6 +4,9 @@
  * @author Piotr Krysik <pkrysik@stud.elka.pw.edu.pl>
  * @section LICENSE
  *
+ * Copyright 2012, 2013, 2014 Bogdan Diaconescu yo3iiu@yo3iiu.ro
+ * for the hopping code.
+ *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 3, or (at your option)
