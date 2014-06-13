@@ -3,7 +3,7 @@
 #
 # Add only the CA (Cell Allocation) according to SI type 1
 #
-CONFIGURATION="5S"
+CONFIGURATION="0B"
 CA="18 21 30 32 42 61"
 C0="18"
 MA="2f"
