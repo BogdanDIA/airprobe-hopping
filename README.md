@@ -8,7 +8,7 @@ Based on: https://svn.berlin.ccc.de/projects/airprobe/
 http://yo3iiu.ro/blog/?p=1069  
 
 **News**
-13-June-2014 - Airprobe-hopping ported from gnuradio 3.6 to gnuradio 3.7. It compiles and run but does not decode anything yet, probably due to changes in gr API. 
+13-June-2014 - Airprobe-hopping ported from gnuradio 3.6 to gnuradio 3.7. Users of gnuradio 3.6 can use v1.0 tag to get the older sourcecode. The new code compiles and run but does not decode anything yet, probably due to changes in gr API - work in progress 
 
 ![alt text][logo]
 [logo]: https://github.com/BogdanDIA/airprobe-hopping/raw/master/airprobe-hopping.png "Hopping Airprobe"
