@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-from gnuradio import gr, gru, blks2
+from gnuradio import gr, blocks, filter 
 #, gsm
 from gnuradio.eng_option import eng_option
 from optparse import OptionParser

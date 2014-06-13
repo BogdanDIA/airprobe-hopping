@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-from gnuradio import gr, gru, blks2
+from gnuradio import gr, blocks, filter
 #, gsm
 from gnuradio.eng_option import eng_option
 from optparse import OptionParser
@@ -64,28 +64,28 @@ class gsm_receiver_first_blood(gr.top_block):
   
     def _set_sink(self):
         nazwa_pliku_wy = self.options.outputfile
-        ujscie = gr.file_sink(gr.sizeof_float, nazwa_pliku_wy)
+        ujscie = blocks.file_sink(gr.sizeof_float, nazwa_pliku_wy)
         return ujscie
     
     def _set_source(self, ifile):
         nazwa_pliku = ifile
-        zrodlo = gr.file_source(gr.sizeof_gr_complex, nazwa_pliku, False)
+        zrodlo = blocks.file_source(gr.sizeof_gr_complex, nazwa_pliku, False)
         return zrodlo
 
     def _set_filter(self):
         filter_cutoff   = 145e3	
         filter_t_width  = 10e3
         offset = 0
-        filter_taps     = gr.firdes.low_pass(1.0, self.input_rate, filter_cutoff, filter_t_width, gr.firdes.WIN_HAMMING)
-        filtr          = gr.freq_xlating_fir_filter_ccf(1, filter_taps, offset, self.input_rate)
+        filter_taps     = filter.firdes.low_pass_2(1.0, self.input_rate, filter_cutoff, filter_t_width, filter.firdes.WIN_HAMMING)
+        filtr          = filter.freq_xlating_fir_filter_ccf(1, filter_taps, offset, self.input_rate)
         return filtr
 
     def _set_interpolator(self):
-        interpolator = gr.fractional_interpolator_cc(0, self.sps) 
+        interpolator = filter.fractional_interpolator_cc(0, self.sps) 
         return interpolator
 
     def _set_converter(self):
-        v2s = gr.vector_to_stream(gr.sizeof_float, 142)
+        v2s = blocks.vector_to_stream(gr.sizeof_float, 142)
         return v2s
     
     def _set_receiver(self):

@@ -20,7 +20,7 @@
 # Boston, MA 02110-1301, USA.
 # 
 
-from gnuradio import gr, blks2
+from gnuradio import gr, blocks, filter 
 import os, time
 import scipy, pylab
 from scipy import fftpack
@@ -45,8 +45,8 @@ class pfb_top_block(gr.top_block):
         self._output_rate = options.srate / options.decimation
 
         # Create a set of taps for the PFB channelizer
-        self._taps = gr.firdes.low_pass_2(1, options.srate, 145e3, 10e3, 
-                                          attenuation_dB=100, window=gr.firdes.WIN_BLACKMAN_hARRIS)
+        self._taps = filter.firdes.low_pass_2(1, options.srate, 145e3, 10e3, 
+                                          attenuation_dB=100, window=filter.firdes.WIN_BLACKMAN_hARRIS)
 
         # Calculate the number of taps per channel for our own information
         tpc = scipy.ceil(float(len(self._taps)) /  float(options.nchannels))
@@ -57,20 +57,20 @@ class pfb_top_block(gr.top_block):
         self._o = float (options.nchannels) / float (options.decimation);
         print "pfb oversampling: ", self._o
         
-        self.head = gr.head(gr.sizeof_gr_complex, options.nsamples)
+        self.head = blocks.head(gr.sizeof_gr_complex, options.nsamples)
 
         # Construct the channelizer filter
-        self.pfb = blks2.pfb_channelizer_ccf(options.nchannels, self._taps, self._o)
+        self.pfb = filter.pfb.channelizer_ccf(options.nchannels, self._taps, self._o)
 
         # Construct a vector sink for the input signal to the channelizer
-        self.snk_i = gr.vector_sink_c()
-        self.input = gr.file_source(gr.sizeof_gr_complex, "./out/out.cf", False);
+        self.snk_i = blocks.vector_sink_c()
+        self.input = blocks.file_source(gr.sizeof_gr_complex, "./out/out.cf", False);
         # Connect the blocks
         self.connect(self.input, self.head, self.pfb)
 
         self.output_files = list();
         for i in xrange(int(options.nchannels / 2) + 1):
-          self.output_files.append(gr.file_sink(gr.sizeof_gr_complex, "./out/out_" + str(options.arfcn + i) + ".cf"))
+          self.output_files.append(blocks.file_sink(gr.sizeof_gr_complex, "./out/out_" + str(options.arfcn + i) + ".cf"))
 
         if (options.nchannels % 2) != 0:
           ind = 1;
@@ -78,12 +78,12 @@ class pfb_top_block(gr.top_block):
           ind = 0
 	
         for i in xrange(1, int(options.nchannels / 2) + ind):
-          self.output_files.append(gr.file_sink(gr.sizeof_gr_complex, "./out/out_" + str(options.arfcn - int(options.nchannels / 2) - ind + i) + ".cf"))
+          self.output_files.append(blocks.file_sink(gr.sizeof_gr_complex, "./out/out_" + str(options.arfcn - int(options.nchannels / 2) - ind + i) + ".cf"))
 
         # Create a vector sink for each of nchannels output channels of the filter and connect it
         self.snks = list()
         for i in xrange(options.nchannels):
-            self.snks.append(gr.vector_sink_c())
+            self.snks.append(blocks.vector_sink_c())
             self.connect((self.pfb, i), self.output_files[i])
 
 def main():
