@@ -26,7 +26,7 @@ class synchronizer(gr.feval_dd):
 
     def eval(self, timing_offset):
         self.top_block.set_timing(timing_offset)
-        return freq_offet
+        return timing_offset
 
 class gsm_receiver_first_blood(gr.top_block):
     def __init__(self):
